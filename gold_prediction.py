@@ -1,32 +1,67 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # Base
+# # Gold Price Prediction 🧈🤑
 
-# # Data Preprocessing
+# # 1. Introduction
+# ## 1.1. Project Goal
+# 
+# The primary goal of this project is to develop and evaluate predictive models that can accurately forecast the next day's gold price. By comparing the performance of different models, we aim to identify the most effective approach for predicting gold prices. The insights gained from this project can help in understanding the strengths and limitations of various modeling techniques in the context of financial time-series data.
+# 
+# ## 1.2. Objectives
+# 
+# 1. **Data Preprocessing**: To clean and prepare the dataset for analysis and modeling.
+# 2. **Exploratory Data Analysis (EDA)**: To understand the underlying patterns and relationships within the data.
+# 3. **Feature Engineering**: To select and transform features that are most relevant for predicting gold prices.
+# 4. **Model Selection and Training**: To train and evaluate various models and identify the best-performing model.
+# 5. **Model Evaluation**: To compare the performance of different models using metrics such as Mean Squared Error (MSE), Mean Absolute Error (MAE), and R² score.
+# 6. **Next Day Prediction**: To deploy the best-performing models for predicting the next day's gold price.
 
-# In[38]:
+# # 2. Data Collection
+# 
+# ## 2.1. Source of Data
+# The dataset is sourced from Sahil Wagh on Kaggle - Gold Stock Prices, which can be found at the following URL: https://www.kaggle.com/datasets/sahilwagh/gold-stock-prices
+# 
+# The most current gold prices can be downloaded from: https://www.investing.com/commodities/gold-historical-data
+# 
+# ## 2.2. Composition of the Dataset
+# 
+# The dataset used in this project consists of historical gold prices and related features. The data includes daily records of:
+# - **Index**: The surrogate index of the record.
+# - **Date**: The date of the record.
+# - **Open**: The opening price of gold on that day.
+# - **High**: The highest price of gold on that day.
+# - **Low**: The lowest price of gold on that day.
+# - **Close/Last**: The closing price of gold on that day.
+# - **Volume**: The trading volume of gold on that day.
+
+# # 3. Data Preprocessing
+
+# In[50]:
 
 
 import pandas as pd
 import numpy as np
+
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 import xgboost as xgb
+
 from prophet import Prophet
-from tensorflow.keras.models import Sequential
+
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import LSTM, Dense, Dropout
+
 import matplotlib.pyplot as plt
-from statsmodels.tsa.arima.model import ARIMA
-from bsts import BSTS
-from keras.models import load_model
 import seaborn as sns
+
+# Model saving and loading
 import joblib
 
 
-# ## .1. Load DS
+# ## 3.1. Loading the Dataset
 
 # In[8]:
 
@@ -43,7 +78,7 @@ df = df.drop('Index', axis=1)
 print(f'The dataset contains {df.shape[0]} rows and {df.shape[1]} columns.')
 
 
-# ## .2. Handling Missing Values
+# ## 3.2. Handling Missing Values
 
 # In[9]:
 
@@ -51,7 +86,7 @@ print(f'The dataset contains {df.shape[0]} rows and {df.shape[1]} columns.')
 print(df.isnull().sum())
 
 
-# ## .3. Splitting the Dataset
+# ## 3.3. Splitting the Dataset
 
 # In[10]:
 
@@ -61,9 +96,9 @@ train_size = int(len(df) * 0.8)
 train, test = df[:train_size], df[train_size:] # train = first 8 years, test = last 2 years
 
 
-# # EDA
+# # 4. Exploratory Data Analysis (EDA)
 
-# ## .1. Histograms of Features
+# ## 4.1. Histograms of Features
 
 # In[ ]:
 
@@ -78,7 +113,7 @@ plt.show()
 # 
 # In contrast, the **Volume** is right-skewed with outliers, suggesting many days with low trading volumes and a few with very high volumes.
 
-# ## .2. Close Prices over Time
+# ## 4.2. Close Prices over Time
 
 # In[ ]:
 
@@ -99,7 +134,7 @@ plt.show()
 # - **2020-2024**: Marked volatility, peaking at 2407.8 in early 2024.
 # This trend underscores gold's role as a safe-haven asset, particularly during economic uncertainties, geopolitical tensions and the diminishing status of the US dollar.
 
-# ## .3. Heatmap of the Correlation Matrix
+# ## 4.3. Heatmap of the Correlation Matrix
 
 # In[ ]:
 
@@ -120,7 +155,7 @@ print(corr_matrix)
 # 
 # **Volume** shows very weak correlation with all price-related features, suggesting that trading volume does not have a strong linear relationship with the price movements of gold.
 
-# ## .4. Pair Plots for Visualizing Feature Relationships
+# ## 4.4. Pair Plots for Visualizing Feature Relationships
 
 # In[ ]:
 
@@ -139,7 +174,7 @@ plt.show()
 # 
 # The pair plots for Volume show random scattered points compared to the price features, indicating no clear linear relationship. This is consistent with the correlation matrix, where Volume has very low correlation values with the price features, suggesting its independence from price movements.
 
-# ## .5. Box Plot to Detect Outliers
+# ## 4.5. Box Plot to Detect Outliers
 
 # In[ ]:
 
@@ -167,7 +202,7 @@ plt.show()
 # 
 # The Close/Last, Open, High, and Low features show no outliers, suggesting stable and consistent gold prices uptrend without extreme fluctuations.
 
-# ## .6. Moving Averages
+# ## 4.6. Moving Averages
 
 # In[ ]:
 
@@ -188,7 +223,7 @@ plt.show()
 
 # ![movingavg](https://i.imgur.com/aEUBO0A.png)
 
-# # Feature Engineering
+# # 5. Feature Engineering
 
 # The following feature engineering is justified as follows: 
 # 
@@ -218,9 +253,9 @@ y_train_scaled = scaler_y.fit_transform(y_train.values.reshape(-1, 1))
 y_test_scaled = scaler_y.transform(y_test.values.reshape(-1, 1))
 
 
-# # Model Selection
+# # 6. Model Selection
 
-# ## .1. Prophet Model
+# ## 6.1. Prophet Model
 
 # **Prophet** is ideal for time-series forecasting with strong seasonal effects and trends, it will be seen if this is a good fit for the nature of gold prices.
 
@@ -238,7 +273,7 @@ def prophet_model(train, test):
     evaluate_model('Prophet', test_df['y'].values, y_pred)
 
 
-# ## .2. Linear Regression Model
+# ## 6.2. Linear Regression Model
 
 # **Linear Regression** is appropriate due to the strong linear relationship between 'Open' and 'Close/Last' prices.
 
@@ -253,7 +288,7 @@ def linear_regression_model(X_train, y_train, X_test, y_test):
     evaluate_model('Linear Regression', y_test, y_pred)
 
 
-# ## .3. Random Forest Model
+# ## 6.3. Random Forest Model
 
 # **Random Forest** can capture non-linear patterns and interactions, providing robust predictions. It also prevents overfitting through ensemble learning.
 
@@ -267,7 +302,7 @@ def random_forest_model(X_train, y_train, X_test, y_test):
     evaluate_model('Random Forest', y_test, y_pred)
 
 
-# ## .4. XGBoost Model
+# ## 6.4. XGBoost Model
 
 # **XGBoost** also excels in handling complex, non-linear relationships and interactions. Its regularization techniques prevent overfitting.
 
@@ -281,7 +316,7 @@ def xgboost_model(X_train, y_train, X_test, y_test):
     evaluate_model('XGBoost', y_test, y_pred)
 
 
-# ## .5. LSTM Model
+# ## 6.5. LSTM Model
 
 # **LSTM** networks are designed for sequential data, capturing long-term dependencies and trends. Their ability to model temporal dependencies makes them well-suited for forecasting gold prices based on historical patterns.
 
@@ -327,7 +362,7 @@ def lstm_pretrained_model(X_train_scaled, y_train_scaled, X_test_scaled, y_test_
     evaluate_model('LSTM', y_test_actual, y_pred)
 
 
-# # Model Training
+# # 7. Model Training
 
 # In[17]:
 
@@ -381,11 +416,11 @@ lstm_pretrained_model(X_train_scaled, y_train_scaled, X_test_scaled, y_test_scal
 print(results)
 
 
-# # Model Evaluation
+# # 8. Model Evaluation
 
-# ## .1. Performance Visualizations
+# ## 8.1. Performance Visualizations
 
-# ### .1.1. Bar Charts of Model Performance (MSE, MAE)
+# ### 8.1.1. Bar Charts of Model Performance (MSE, MAE)
 
 # In[ ]:
 
@@ -420,7 +455,7 @@ plt.show()
 
 # ![MSE_MAE](https://i.imgur.com/s1YHnXR.png)
 
-# ### .1.2. Horizontal Bars of R^2 metric
+# ### 8.1.2. Horizontal Bars of R^2 metric
 
 # In[ ]:
 
@@ -435,7 +470,7 @@ plt.show()
 
 # ![Rsquare](https://i.imgur.com/sK5whJd.png)
 
-# ### .1.3. Interactive Graph of Predictions vs Actual Test values
+# ### 8.1.3. Interactive Graph of Predictions vs Actual Test values
 
 # In[59]:
 
@@ -472,7 +507,7 @@ plot_predictions(test['Close/Last'], predictions)
 
 # ![predictions](https://i.imgur.com/j3zXCPW.png)
 
-# ## .2. Table of Evaluation Results
+# ## 8.2. Table of Evaluation Results
 
 # | Model             | MSE          | MAE          | R²          |
 # |-------------------|--------------|--------------|-------------|
@@ -482,7 +517,7 @@ plot_predictions(test['Close/Last'], predictions)
 # | XGBoost           | 16405.24     | 63.68        | 0.55        |
 # | LSTM              | 1037.03      | 25.50        | 0.97        |
 
-# ## .3. Analysis of Results
+# ## 8.3. Analysis of Results
 
 # - **Prophet Model**: shows the highest MSE and MAE, indicating poor predictive performance. The negative R² value suggests that the model performs worse than a simple mean-based model. This poor performance can be attributed to Prophet's design, which is better suited for capturing seasonality and trends in time series data, rather than the specific linear relationships present in gold prices.
 # 
@@ -494,7 +529,7 @@ plot_predictions(test['Close/Last'], predictions)
 # 
 # - **LSTM Model**: performs well, with low MSE and MAE values, as well as a high R² value of 0.97. LSTM's ability to capture temporal dependencies and patterns in sequential data contributes to its strong performance.
 
-# # Model Deployment for Next Day Prediction
+# # 9. Model Deployment for Next Day Prediction
 
 # In[45]:
 
@@ -526,7 +561,7 @@ last_date = df.index[-1]
 next_date = last_date + pd.Timedelta(days=1)
 
 
-# ## .1. Linear Regression Model
+# ## 9.1. Linear Regression Model
 
 # In[48]:
 
@@ -542,7 +577,7 @@ next_day_prediction = scaler_y.inverse_transform(next_day_prediction_scaled)
 print(f'Predicted Price of Regression model for {next_date.date()} using Linear Regression: {next_day_prediction[0][0]}')
 
 
-# ## .2. LSTM model
+# ## 9.2. LSTM model
 
 # In[49]:
 
@@ -571,12 +606,14 @@ print(f'Predicted Price of LSTM model for {next_date.date()}: {next_day_predicti
 
 # **Actual Price** for 2024-08-06: 2,431.603
 # 
-# MAE of Linear Regression 57.73
+# **Absolute Error of the prediction**: 
+# - Linear Regression: 57.73
+# - LSTM: 71.37
+
+# # 10. Conclusion
+
+# In conclusion, our project provided valuable insights into the challenges and complexities of dealing with time-series problems for forecasting financial markets. Despite the comprehensive approach, including data preprocessing, exploratory data analysis, feature engineering, and model training, the results highlight the inherent difficulties in predicting gold prices accurately. 
 # 
-# MAE of LSTM 71.37
-
-# In[ ]:
-
-
-
-
+# The **Linear Regression model** performed the best among the tested models, yet it still had a significant MAE of 57.73 USD from the most recent price.This underscores the limitations of relying solely on historical price data and simple linear relationships for accurate predictions. The **LSTM model**, designed to capture temporal dependencies, also fell short, suggesting that the linear nature of the data might not fully leverage its strengths. 
+# 
+# The high volatility and sensitivity of gold prices due to various factors, including geopolitical events, economic indicators, and market sentiment, make accurate predictions challenging. To improve predictive accuracy, future work could incorporate **sentiment analysis** of market news, **macroeconomic indicators**, and **ensemble methods** that combine multiple models. This project highlights the need for a multifaceted approach to financial forecasting, acknowledging that simple models may not suffice in capturing the complex dynamics of gold prices.
