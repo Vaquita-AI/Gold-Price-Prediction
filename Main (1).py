@@ -5,7 +5,7 @@
 
 # # Data Preprocessing
 
-# In[7]:
+# In[38]:
 
 
 import pandas as pd
@@ -23,6 +23,7 @@ from statsmodels.tsa.arima.model import ARIMA
 from bsts import BSTS
 from keras.models import load_model
 import seaborn as sns
+import joblib
 
 
 # ## .1. Load DS
@@ -194,6 +195,8 @@ plt.show()
 # - The high correlation between the price features **(Close/Last, Open, High, Low)** indicates redundancy, so only the **'Open'** price is selected as it strongly predicts **'Close/Last'**. 
 # - **Volume** is not included because it shows minimal correlation with the closing price, indicating it does not add predictive value. 
 # - **Normalization** using MinMaxScaler is appropriate since the absence of outliers in the price features ensures that scaling will be effective without being skewed by extreme values.
+# 
+# It is worth noting that different sets of features were also tested on the LSTM model, including **lag features** and **moving averages**. However, the model tended to overfit with the added features.
 
 # In[11]:
 
@@ -239,12 +242,13 @@ def prophet_model(train, test):
 
 # **Linear Regression** is appropriate due to the strong linear relationship between 'Open' and 'Close/Last' prices.
 
-# In[13]:
+# In[40]:
 
 
 def linear_regression_model(X_train, y_train, X_test, y_test):
     model = LinearRegression()
     model.fit(X_train, y_train)
+    # joblib.dump(model, 'linear_regression_model.pkl')  # Save the trained model to a file
     y_pred = model.predict(X_test)
     evaluate_model('Linear Regression', y_test, y_pred)
 
@@ -346,7 +350,7 @@ def evaluate_model(name, y_true, y_pred):
 prophet_model(train, test)
 
 
-# In[19]:
+# In[41]:
 
 
 linear_regression_model(X_train_scaled, y_train, X_test_scaled, y_test)
@@ -489,6 +493,87 @@ plot_predictions(test['Close/Last'], predictions)
 # - **XGBoost Model**: performs similarly to Random Forest, with slightly higher MSE and MAE. Like Random Forest, XGBoost's performance is limited by the linear relationships in the data.
 # 
 # - **LSTM Model**: performs well, with low MSE and MAE values, as well as a high R² value of 0.97. LSTM's ability to capture temporal dependencies and patterns in sequential data contributes to its strong performance.
+
+# # Model Deployment for Next Day Prediction
+
+# In[45]:
+
+
+df = pd.read_csv('goldstock_current.csv')
+
+df['Date'] = pd.to_datetime(df['Date'], format='%m/%d/%Y')
+df = df.sort_values('Date')
+df.set_index('Date', inplace=True)
+
+# Remove commas and convert strings to numeric values
+df = df.replace({',': ''}, regex=True)
+df = df.apply(pd.to_numeric, errors='coerce')
+
+features = ['Open']
+target = 'Price'
+
+scaler_X = MinMaxScaler()
+scaler_y = MinMaxScaler()
+
+X = df[features]
+y = df[target]
+
+X_scaled = scaler_X.fit_transform(X)
+y_scaled = scaler_y.fit_transform(y.values.reshape(-1, 1))
+
+# Calculate the next day's date
+last_date = df.index[-1]
+next_date = last_date + pd.Timedelta(days=1)
+
+
+# ## .1. Linear Regression Model
+
+# In[48]:
+
+
+model = LinearRegression()
+model.fit(X_scaled, y_scaled)
+
+last_data_point = X_scaled[-1].reshape(1, -1)
+
+next_day_prediction_scaled = model.predict(last_data_point)
+next_day_prediction = scaler_y.inverse_transform(next_day_prediction_scaled)
+
+print(f'Predicted Price of Regression model for {next_date.date()} using Linear Regression: {next_day_prediction[0][0]}')
+
+
+# ## .2. LSTM model
+
+# In[49]:
+
+
+def create_sequences(X, y, time_steps=1):
+    Xs, ys = [], []
+    for i in range(len(X) - time_steps):
+        Xs.append(X[i:(i + time_steps)])
+        ys.append(y[i + time_steps])
+    return np.array(Xs), np.array(ys)
+
+time_steps = 10
+X_seq, y_seq = create_sequences(X_scaled, y_scaled, time_steps)
+
+model = load_model('gold_price_prediction_model.h5')
+
+# Use the last 10 days to make a prediction for the next day
+last_sequence = X_scaled[-time_steps:]
+last_sequence = last_sequence.reshape((1, time_steps, len(features)))
+
+next_day_prediction_scaled = model.predict(last_sequence)
+next_day_prediction = scaler_y.inverse_transform(next_day_prediction_scaled)
+
+print(f'Predicted Price of LSTM model for {next_date.date()}: {next_day_prediction[0][0]}')
+
+
+# **Actual Price** for 2024-08-06: 2,431.603
+# 
+# MAE of Linear Regression 57.73
+# 
+# MAE of LSTM 71.37
 
 # In[ ]:
 
